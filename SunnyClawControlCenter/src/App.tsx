@@ -1,121 +1,131 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import heroImg from './assets/hero.png'
+import { useState, useCallback, useEffect } from 'react'
+import type { ConversationSummary, ChatMessage, SkillDefinition, TerminalSession } from './types'
+import { createConversation, deleteConversation } from './services/api'
+import Sidebar from './components/Sidebar'
+import ChatView from './components/ChatView'
 import './App.css'
 
+const conversationMessages = new Map<string, ChatMessage[]>()
+
 function App() {
-  const [count, setCount] = useState(0)
+  const [conversations, setConversations] = useState<ConversationSummary[]>([])
+  const [activeId, setActiveId] = useState<string | null>(null)
+  const [messages, setMessages] = useState<ChatMessage[]>([])
+  const [enableSearch, setEnableSearch] = useState(true)
+  const [skills, setSkills] = useState<SkillDefinition[]>([])
+  const [terminalSession, setTerminalSession] = useState<TerminalSession | null>(null)
+
+  useEffect(() => {
+    const init = async () => {
+      try {
+        const conv = await createConversation()
+        setConversations([conv])
+        setActiveId(conv.id)
+        conversationMessages.set(conv.id, [])
+        setMessages([])
+      } catch (err) {
+        console.error('初始化对话失败:', err)
+      }
+    }
+    init()
+  }, [])
+
+  const handleNew = useCallback(async () => {
+    try {
+      const conv = await createConversation()
+      setConversations(prev => [conv, ...prev])
+      setActiveId(conv.id)
+      conversationMessages.set(conv.id, [])
+      setMessages([])
+    } catch (err) {
+      console.error('创建对话失败:', err)
+    }
+  }, [])
+
+  const handleSelect = useCallback((id: string) => {
+    setActiveId(id)
+    setMessages(conversationMessages.get(id) || [])
+  }, [])
+
+  const handleDelete = useCallback(async (id: string) => {
+    try {
+      await deleteConversation(id)
+    } catch (err) {
+      console.error('删除对话失败:', err)
+    }
+    conversationMessages.delete(id)
+    setConversations(prev => {
+      const remaining = prev.filter(c => c.id !== id)
+      if (activeId === id) {
+        if (remaining.length > 0) {
+          const next = remaining[0]
+          setActiveId(next.id)
+          setMessages(conversationMessages.get(next.id) || [])
+        } else {
+          setActiveId(null)
+          setMessages([])
+        }
+      }
+      return remaining
+    })
+  }, [activeId])
+
+  const handleMessagesUpdate = useCallback((
+    convId: string,
+    newMessagesOrUpdater: ChatMessage[] | ((prev: ChatMessage[]) => ChatMessage[])
+  ) => {
+    const prev = conversationMessages.get(convId) || []
+    const updated =
+      typeof newMessagesOrUpdater === 'function'
+        ? newMessagesOrUpdater(prev)
+        : newMessagesOrUpdater
+    conversationMessages.set(convId, updated)
+    if (convId === activeId) {
+      setMessages(updated)
+    }
+  }, [activeId])
+
+  const handleFirstMessage = useCallback((conversationId: string, content: string) => {
+    const title = content.length > 20 ? content.slice(0, 20) + '...' : content
+    setConversations(prev =>
+      prev.map(c => (c.id === conversationId ? { ...c, title } : c))
+    )
+  }, [])
+
+  const handleAddSkill = useCallback((skill: SkillDefinition) => {
+    setSkills(prev => [...prev, skill])
+  }, [])
+
+  const handleRemoveSkill = useCallback((name: string) => {
+    setSkills(prev => prev.filter(s => s.name !== name))
+  }, [])
+
+  const skillNames = skills.map(s => s.name)
 
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.tsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
-
-      <div className="ticks"></div>
-
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
-
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
+    <div className="app-layout">
+      <Sidebar
+        conversations={conversations}
+        activeId={activeId}
+        skills={skills}
+        terminalSession={terminalSession}
+        onSelect={handleSelect}
+        onNew={handleNew}
+        onDelete={handleDelete}
+        onAddSkill={handleAddSkill}
+        onRemoveSkill={handleRemoveSkill}
+      />
+      <ChatView
+        conversationId={activeId}
+        messages={messages}
+        enableSearch={enableSearch}
+        skills={skillNames}
+        onToggleSearch={() => setEnableSearch(prev => !prev)}
+        onMessagesUpdate={handleMessagesUpdate}
+        onFirstMessage={handleFirstMessage}
+        onTerminalSessionChange={setTerminalSession}
+      />
+    </div>
   )
 }
 
